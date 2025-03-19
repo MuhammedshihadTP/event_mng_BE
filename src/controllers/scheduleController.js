@@ -31,7 +31,7 @@ const computeSchedule = async (req, res) => {
         taskId: task.taskId,
         duration:task?.duration,
         description: task.description, 
-       
+        subtaskCount:task.subtaskCount
       })),
     
       totalEventDuration
