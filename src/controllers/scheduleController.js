@@ -5,13 +5,21 @@ const computeSchedule = async (req, res) => {
   const { eventId } = req.params;
 
   try {
-    const event = await Event.findById(eventId).populate('tasks.task');
+    const event = await Event.findById(eventId)
+    .populate({
+      path: "tasks.task",
+      populate: {
+        path: "dependencies.task", 
+        model: "Task",
+      },
+    });
+
 
     if (!event) {
       throw new Error('Event not found');
     }
 
-    const { taskOrder, scheduledTasks, totalDuration, planStartDate, planEndDate } = scheduleTasks(
+    const { taskOrder, scheduledTasks, totalDuration, planStartDate, planEndDate,totalEventDuration } = scheduleTasks(
       event.date,
       event.tasks
     );
@@ -21,13 +29,12 @@ const computeSchedule = async (req, res) => {
       taskOrder,
       scheduledTasks: scheduledTasks.map((task) => ({
         taskId: task.taskId,
+        duration:task?.duration,
         description: task.description, 
-        startDate: task.startDate,
-        endDate: task.endDate,
+       
       })),
-      totalDuration,
-      planStartDate,
-      planEndDate,
+    
+      totalEventDuration
     });
   } catch (err) {
     res.status(400).json({ error: err.message });

@@ -1,4 +1,4 @@
-import { DateTime } from 'luxon';
+
 
 const topologicalSort = (tasks, dependencies) => {
   const sorted = [];
@@ -7,7 +7,7 @@ const topologicalSort = (tasks, dependencies) => {
 
   const visit = (taskId) => {
     if (visiting.has(taskId)) {
-      throw new Error('Cyclic dependencies detected');
+      throw new Error("Cyclic dependencies detected");
     }
     if (!visited.has(taskId)) {
       visiting.add(taskId);
@@ -28,55 +28,95 @@ const topologicalSort = (tasks, dependencies) => {
 };
 
 const scheduleTasks = (eventDate, tasks) => {
+
+
   const taskMap = {};
   const dependencies = {};
 
   tasks.forEach((task) => {
-    
-    const duration = task.duration || task.task.duration || 1; // Default duration: 1 hour
-    const offset = task.offset || task.task.offset || 0; // Default offset: 0 hours
+    const taskData = task?.task || task;
+    if (!taskData?._id) {
+      console.error("Task is missing _id:", taskData);
+      return;
+    }
 
-    taskMap[task.task._id] = {
-      ...task.task,
+    const duration = (taskData?.duration || 0) / 24; 
+    const offset = (taskData?.offset || 0) / 24; 
+
+    taskMap[taskData._id.toString()] = {
+      ...taskData,
       duration,
       offset,
-      description: task.task.description
+      description: taskData?.description,
     };
-    dependencies[task.task._id] = task.dependencies || task.task.dependencies;
+
+    dependencies[taskData._id.toString()] = (taskData.dependencies || []).map(
+      (dep) => dep.task.toString()
+    );
   });
+
+  console.log("Task Map:", taskMap);
+  console.log("Dependencies:", dependencies);
 
   const taskOrder = topologicalSort(taskMap, dependencies);
 
-
   const scheduledTasks = [];
-
-  let totalDuration = 0;
+  const taskCompletionTime = {};
+  let totalEventDuration = 0;
 
   taskOrder.forEach((taskId) => {
     const task = taskMap[taskId];
-    const offsetHours = task.offset * (task.timing === 'before' ? -1 : 1);
-    const taskStartDate = DateTime.fromJSDate(eventDate).plus({ hours: offsetHours });
-    const taskEndDate = taskStartDate.plus({ hours: task.duration });
+    if (!task) {
+      console.error(`Task not found in taskMap for ID: ${taskId}`);
+      return;
+    }
+
+    let maxDependencyTime = 0;
+
+
+    const getMaxCompletionTime = (depId) => {
+      if (taskCompletionTime[depId] !== undefined) {
+        return taskCompletionTime[depId];
+      }
+
+      if (dependencies[depId]) {
+        return Math.max(
+          0,
+          ...dependencies[depId].map(getMaxCompletionTime)
+        );
+      }
+      return 0;
+    };
+
+    if (dependencies[taskId]?.length > 0) {
+      maxDependencyTime = Math.max(
+        maxDependencyTime,
+        ...dependencies[taskId].map(getMaxCompletionTime)
+      );
+    }
+
+    const taskStartTime = maxDependencyTime + task.offset;
+    const taskEndTime = taskStartTime + task.duration;
+    taskCompletionTime[taskId] = taskEndTime;
+
+    // **Add dependency completion time to the task duration**
+    const totalDuration = task.duration + maxDependencyTime;
+
+    totalEventDuration = Math.max(totalEventDuration, taskEndTime);
 
     scheduledTasks.push({
       taskId,
-      description: task?.description,
-      startDate: taskStartDate.toJSDate(),
-      endDate: taskEndDate.toJSDate(),
+      description: task.description,
+      startTime: taskStartTime * 24, 
+      duration: totalDuration * 24, 
+      endTime: taskEndTime * 24, 
     });
-
-    totalDuration += task.duration;
   });
-
-  const planStartDate = scheduledTasks[0].startDate;
-  const planEndDate = scheduledTasks[scheduledTasks.length - 1].endDate;
 
   return {
     taskOrder: scheduledTasks.map((task) => task.taskId),
     scheduledTasks,
-    totalDuration,
-    planStartDate,
-    planEndDate,
+    totalEventDuration: totalEventDuration * 24, 
   };
 };
 
