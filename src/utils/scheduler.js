@@ -9,7 +9,7 @@ const topologicalSort = (tasks, dependencies) => {
     }
     if (!visited.has(taskId)) {
       visiting.add(taskId);
-      dependencies[taskId]?.forEach(visit);
+      (dependencies[taskId] || []).forEach(visit);
       visiting.delete(taskId);
       visited.add(taskId);
       sorted.push(taskId);
@@ -24,33 +24,40 @@ const topologicalSort = (tasks, dependencies) => {
 
   return sorted;
 };
-
 const scheduleTasks = (eventDate, tasks) => {
   const taskMap = {};
   const dependencies = {};
 
-  tasks.forEach((task) => {
-    const taskData = task?.task || task;
-    if (!taskData?._id) {
-      console.error("Task is missing _id:", taskData);
-      return;
+  const addTask = (taskData) => {
+    if (!taskData || !taskData._id) return;
+    const taskId = taskData._id.toString();
+
+    if (!taskMap[taskId]) {
+      taskMap[taskId] = {
+        ...taskData,
+        duration: (taskData?.duration || 0) / 24, 
+        offset: (taskData?.offset || 0) / 24,
+        description: taskData.description || "", 
+        
+      };
+    }
+    
+    if (!dependencies[taskId]) {
+      dependencies[taskId] = [];
     }
 
-    const duration = (taskData?.duration || 0) / 24; // Convert hours to days
-    const offset = (taskData?.offset || 0) / 24; // Convert hours to days
+    (taskData.dependencies || []).forEach((dep) => {
+      const depTask = dep.task || dep;
+      const depId = depTask._id?.toString() || depTask.toString();
 
-    taskMap[taskData._id.toString()] = {
-      ...taskData,
-      duration,
-      offset,
-      description: taskData?.description,
-      timing: taskData?.timing || "before", // Default to "before" if not specified
-    };
+      if (depId) {
+        dependencies[taskId].push(depId);
+        addTask(depTask); 
+      }
+    });
+  };
 
-    dependencies[taskData._id.toString()] = (taskData.dependencies || []).map(
-      (dep) => dep.task.toString()
-    );
-  });
+  tasks.forEach((task) => addTask(task.task || task));
 
   console.log("Task Map:", taskMap);
   console.log("Dependencies:", dependencies);
@@ -58,10 +65,11 @@ const scheduleTasks = (eventDate, tasks) => {
   const taskOrder = topologicalSort(taskMap, dependencies);
 
   const scheduledTasks = [];
-  const taskCompletionTime = {};
   let totalEventDuration = 0;
 
-  const calculateTotalDuration = (taskId) => {
+  const calculateTotalDuration = (taskId, cache = {}) => {
+    if (cache[taskId]) return cache[taskId];
+    
     const task = taskMap[taskId];
     if (!task) {
       console.error(`Task not found in taskMap for ID: ${taskId}`);
@@ -69,58 +77,36 @@ const scheduleTasks = (eventDate, tasks) => {
     }
 
     let totalDuration = task.duration;
+    dependencies[taskId]?.forEach((depId) => {
+      totalDuration += calculateTotalDuration(depId, cache);
+    });
 
-    if (dependencies[taskId]?.length > 0) {
-      dependencies[taskId].forEach((depId) => {
-        const depTask = taskMap[depId];
-        if (!depTask) {
-          console.error(`Dependency task not found for ID: ${depId}`);
-          return;
-        }
-
-        // Calculate the duration of the dependency, including its own dependencies
-        const depDuration = calculateTotalDuration(depId);
-
-        // Adjust for timing and offset
-        if (depTask.timing === "before") {
-          // Dependency must complete before the parent task starts
-          totalDuration += depDuration + depTask.offset;
-        } else if (depTask.timing === "after") {
-          // Dependency starts after the parent task completes
-          // Ensure the parent task's duration is long enough to accommodate the dependency
-          totalDuration = Math.max(totalDuration, depDuration + depTask.offset);
-        }
-      });
-    }
-
+    cache[taskId] = totalDuration;
     return totalDuration;
   };
 
+  const cache = {};
   taskOrder.forEach((taskId) => {
-    const task = taskMap[taskId];
-    if (!task) {
-      console.error(`Task not found in taskMap for ID: ${taskId}`);
-      return;
-    }
-
-    // Calculate the total duration of the task, including its subtasks
-    const totalDuration = calculateTotalDuration(taskId);
-
-    // Update totalEventDuration with the maximum duration
+    const totalDuration = calculateTotalDuration(taskId, cache);
     totalEventDuration = Math.max(totalEventDuration, totalDuration);
 
-    scheduledTasks.push({
-      taskId,
-      description: task.description,
-      duration: totalDuration, // Convert back to hours
-      subtaskCount: dependencies[taskId]?.length || 0,
-    });
-  });
+
+    if (!Object.values(dependencies).some((deps) => deps.includes(taskId))) {
+        const subtaskCount = dependencies[taskId]?.length || 0;
+        scheduledTasks.push({
+            taskId,
+            description: taskMap[taskId]?.description,
+            duration: totalDuration,
+            subtaskCount,
+        });
+    }
+});
+
 
   return {
     taskOrder: scheduledTasks.map((task) => task.taskId),
     scheduledTasks,
-    totalEventDuration: totalEventDuration , 
+    totalEventDuration,
   };
 };
 

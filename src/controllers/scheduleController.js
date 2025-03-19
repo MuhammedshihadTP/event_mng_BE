@@ -19,6 +19,8 @@ const computeSchedule = async (req, res) => {
       throw new Error('Event not found');
     }
 
+    console.log(event.tasks,"task");
+
     const { taskOrder, scheduledTasks, totalDuration, planStartDate, planEndDate,totalEventDuration } = scheduleTasks(
       event.date,
       event.tasks
@@ -34,6 +36,7 @@ const computeSchedule = async (req, res) => {
         subtaskCount:task.subtaskCount
       })),
     
+      evnt:event?.tasks,
       totalEventDuration
     });
   } catch (err) {
