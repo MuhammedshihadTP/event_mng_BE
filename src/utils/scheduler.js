@@ -24,10 +24,12 @@ const topologicalSort = (tasks, dependencies) => {
 
   return sorted;
 };
+
 const scheduleTasks = (eventDate, tasks) => {
   const taskMap = {};
   const dependencies = {};
 
+  // Step 1: Parse tasks and their dependencies
   const addTask = (taskData) => {
     if (!taskData || !taskData._id) return;
     const taskId = taskData._id.toString();
@@ -35,13 +37,11 @@ const scheduleTasks = (eventDate, tasks) => {
     if (!taskMap[taskId]) {
       taskMap[taskId] = {
         ...taskData,
-        duration: (taskData?.duration || 0) / 24, 
-        offset: (taskData?.offset || 0) / 24,
-        description: taskData.description || "", 
-        
+        duration: taskData.duration || 0, // Duration in hours
+        description: taskData.description || "",
       };
     }
-    
+
     if (!dependencies[taskId]) {
       dependencies[taskId] = [];
     }
@@ -52,7 +52,7 @@ const scheduleTasks = (eventDate, tasks) => {
 
       if (depId) {
         dependencies[taskId].push(depId);
-        addTask(depTask); 
+        addTask(depTask); // Recursively add dependencies
       }
     });
   };
@@ -62,14 +62,22 @@ const scheduleTasks = (eventDate, tasks) => {
   console.log("Task Map:", taskMap);
   console.log("Dependencies:", dependencies);
 
+
   const taskOrder = topologicalSort(taskMap, dependencies);
 
+  
+  const mainTasks = new Set(Object.keys(taskMap));
+  Object.values(dependencies).forEach((deps) => {
+    deps.forEach((depId) => mainTasks.delete(depId));
+  });
+
+ 
   const scheduledTasks = [];
   let totalEventDuration = 0;
 
   const calculateTotalDuration = (taskId, cache = {}) => {
     if (cache[taskId]) return cache[taskId];
-    
+
     const task = taskMap[taskId];
     if (!task) {
       console.error(`Task not found in taskMap for ID: ${taskId}`);
@@ -87,24 +95,23 @@ const scheduleTasks = (eventDate, tasks) => {
 
   const cache = {};
   taskOrder.forEach((taskId) => {
-    const totalDuration = calculateTotalDuration(taskId, cache);
-    totalEventDuration = Math.max(totalEventDuration, totalDuration);
+    if (mainTasks.has(taskId)) {
+      const totalDuration = calculateTotalDuration(taskId, cache);
+      const subtaskCount = dependencies[taskId]?.length || 0;
+
+      scheduledTasks.push({
+        taskId,
+        description: taskMap[taskId]?.description,
+        duration: totalDuration,
+        subtaskCount, 
+      });
 
 
-    if (!Object.values(dependencies).some((deps) => deps.includes(taskId))) {
-        const subtaskCount = dependencies[taskId]?.length || 0;
-        scheduledTasks.push({
-            taskId,
-            description: taskMap[taskId]?.description,
-            duration: totalDuration,
-            subtaskCount,
-        });
+      totalEventDuration += totalDuration;
     }
-});
-
+  });
 
   return {
-    taskOrder: scheduledTasks.map((task) => task.taskId),
     scheduledTasks,
     totalEventDuration,
   };

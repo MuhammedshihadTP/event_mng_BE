@@ -3,7 +3,7 @@ import { scheduleTasks } from '../utils/scheduler.js';
 
 const computeSchedule = async (req, res) => {
   const { eventId } = req.params;
-
+  // scheduleTasks()
   try {
     const event = await Event.findById(eventId)
     .populate({
@@ -21,22 +21,22 @@ const computeSchedule = async (req, res) => {
 
     console.log(event.tasks,"task");
 
-    const { taskOrder, scheduledTasks, totalDuration, planStartDate, planEndDate,totalEventDuration } = scheduleTasks(
+    const { taskOrder, scheduledTasks, totalEventDuration  } = scheduleTasks(
       event.date,
       event.tasks
     );
 
 
     res.json({
-      taskOrder,
+      // taskOrder,
       scheduledTasks: scheduledTasks.map((task) => ({
         taskId: task.taskId,
         duration:task?.duration,
         description: task.description, 
-        subtaskCount:task.subtaskCount
+        subtaskCount:task?.subtaskCount
       })),
     
-      evnt:event?.tasks,
+   
       totalEventDuration
     });
   } catch (err) {
